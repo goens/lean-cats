@@ -60,6 +60,8 @@ private def processHead (accDone : String × Bool)  : Char → String × Bool :=
 
 def removeFrontTick (input : String) : String :=
   (input.splitOn.map (fun s => s.stripPrefix "\'")) |> (String.intercalate " ")
+  |>.splitOn "\n" |>.map (fun s => s.stripPrefix "\'") |> (String.intercalate " ")
+  |>.splitOn "\t" |>.map (fun s => s.stripPrefix "\'") |> (String.intercalate " ")
 
 def removeComments (input : String) : String :=
   let removedTick := removeFrontTick input
@@ -94,3 +96,12 @@ def Filename.mkName (inp : String) : Lean.Name := Id.run do
   return (.str  .anonymous {data := nm.reverse})
 
 #eval Filename.mkName "foo_bar3.baz"
+
+
+def enums_test := "enum Accesses = 'ONCE (*READ_ONCE,WRITE_ONCE*) ||
+		'RELEASE (*smp_store_release*) ||
+		'ACQUIRE (*smp_load_acquire*) ||
+		'NORETURN (* R of non-return RMW *) ||
+		'MB (*xchg(),cmpxchg(),...*)"
+
+#eval removeComments enums_test
