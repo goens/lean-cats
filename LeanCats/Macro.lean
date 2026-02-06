@@ -158,9 +158,9 @@ macro_rules
     `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
       := [assertion| $a] ([expr| $e] evts X))
 
-  | `([inst| enum $nm:ident = $[ $tags:ident ]||*]) =>
+  | `([inst| enum $nm:cat_ident = $[ $tags:ident ]||*]) =>
     `(
-      -- It can be in one line otherwise it generates error.
+      -- tags should be cat_ident, but it seems like the Lean 4 doesn't happy with it.
       inductive $nm where $[| $tags:ident ]*
     )
 
