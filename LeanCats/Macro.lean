@@ -4,6 +4,8 @@ import LeanCats.Relations
 import LeanCats.Data
 import LeanCats.Basic
 
+set_option quotPrecheck false
+
 open Lean Elab Command Term Meta
 open Data
 
@@ -158,11 +160,15 @@ macro_rules
     `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
       := [assertion| $a] ([expr| $e] evts X))
 
-  | `([inst| enum $nm:cat_ident = $[ $tags:ident ]||*]) =>
-    `(
+  | `([inst| enum $nm:cat_ident = $[ $tags:ident ]||*]) => do
+    let indef <- `(
       -- tags should be cat_ident, but it seems like the Lean 4 doesn't happy with it.
       inductive $nm where $[| $tags:ident ]*
     )
+    -- We create the tags and mapping all the fields, because the fields are unique.
+    -- If they're not unique, the herd7 can't use them apprently.
+    let ret := #[indef] ++ #[<-`(open scoped $nm)]
+    return mkNullNode ret
 
 macro_rules
   -- Create the model.
@@ -174,3 +180,15 @@ macro_rules
     -- let insts : Array (TSyntax `command) := #[]
     let ret := #[nstart] ++ insts ++ #[nend]
     return mkNullNode ret
+
+[inst| enum barrier = t1]
+open scoped barrier
+
+scoped[barrier] notation "t1" => barrier.t1
+open scoped barrier
+#check t1
+
+def test_event (e : Event) (h : e.tagType = barrier) (c : e.tag = barrier.t1) :=
+  e.tagType = barrier ∧ e.tag = cast h.symm t1
+
+#check barrier.t1
