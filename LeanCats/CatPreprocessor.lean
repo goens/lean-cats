@@ -8,7 +8,7 @@ def foldl2Aux {α : Type u} (f : α → Char → Char → α) (s : String) (stop
     match s.get? nextIdx with
       | none => a
       | some next =>
-         foldl2Aux f s stopPos nextIdx (f a (s.get i) next)
+        foldl2Aux f s stopPos nextIdx (f a (s.get i) next)
   else a
 termination_by stopPos.1 - i.1
 
@@ -58,13 +58,20 @@ private def processHead (accDone : String × Bool)  : Char → String × Bool :=
     | '"' => (acc, true)
     | _ => (acc, false)
 
+def removeFrontTick (input : String) : String :=
+  (input.splitOn.map (fun s => s.stripPrefix "\'")) |> (String.intercalate " ")
+  |>.splitOn "\n" |>.map (fun s => s.stripPrefix "\'") |> (String.intercalate " ")
+  |>.splitOn "\t" |>.map (fun s => s.stripPrefix "\'") |> (String.intercalate " ")
 
 def removeComments (input : String) : String :=
-  let headProcessed : String := match input.data with
+  let removedTick := removeFrontTick input
+  let headProcessed : String := match removedTick.data with
     | [] => .mk []
     | '"'::rest => (String.mk rest).foldl processHead (String.mk [], false) |>.1
     | s => .mk s
   removeBlockComments headProcessed
+
+#eval removeFrontTick "'example || 'string"
 
 #eval removeComments "(**)"
 #eval removeComments "(*)"
@@ -89,3 +96,12 @@ def Filename.mkName (inp : String) : Lean.Name := Id.run do
   return (.str  .anonymous {data := nm.reverse})
 
 #eval Filename.mkName "foo_bar3.baz"
+
+
+def enums_test := "enum Accesses = 'ONCE (*READ_ONCE,WRITE_ONCE*) ||
+		'RELEASE (*smp_store_release*) ||
+		'ACQUIRE (*smp_load_acquire*) ||
+		'NORETURN (* R of non-return RMW *) ||
+		'MB (*xchg(),cmpxchg(),...*)"
+
+#eval removeComments enums_test

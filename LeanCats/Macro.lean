@@ -4,6 +4,8 @@ import LeanCats.Relations
 import LeanCats.Data
 import LeanCats.Basic
 
+set_option quotPrecheck false
+
 open Lean Elab Command Term Meta
 open Data
 
@@ -24,11 +26,14 @@ instance : Coe (TSyntax `cat_ident) (TSyntax `ident) where
   coe s :=
   if s.raw.getKind.getString! == "cat_ident_" then
     ⟨s.raw.getArg 0⟩
-  else if s.raw.getKind.getString! == "cat_ident_-_" then
+  else if s.raw.getKind.getString! == "cat_ident__-__" then
     let l : TSyntax `ident := ⟨s.raw.getArg 0⟩
     let r : TSyntax `ident := ⟨s.raw.getArg 2⟩
     mkIdent (l.getId.toString ++ "_" ++ r.getId.toString).toName
+  else if s.raw.getKind.getString! == "cat_ident'_" then
+    panic! "Have to implement this"
   else
+    dbg_trace s.raw.getKind.getString!
     panic! "Failed to converse the cat_ident to ident"
 
 macro_rules
@@ -154,7 +159,16 @@ macro_rules
   | `([inst| $a:assertion $e as $nm:cat_ident]) => do
     `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
       := [assertion| $a] ([expr| $e] evts X))
-  -- | `([inst| (* $_ *)]) => `(#print "")
+
+  | `([inst| enum $nm:cat_ident = $[ $tags:ident ]||*]) => do
+    let indef <- `(
+      -- tags should be cat_ident, but it seems like the Lean 4 doesn't happy with it.
+      inductive $nm where $[| $tags:ident ]*
+    )
+    -- We create the tags and mapping all the fields, because the fields are unique.
+    -- If they're not unique, the herd7 can't use them apprently.
+    let ret := #[indef] ++ #[<-`(open scoped $nm)]
+    return mkNullNode ret
 
 macro_rules
   -- Create the model.
@@ -167,4 +181,14 @@ macro_rules
     let ret := #[nstart] ++ insts ++ #[nend]
     return mkNullNode ret
 
-postfix:61 "+" => Relation.TransGen
+[inst| enum barrier = t1]
+open scoped barrier
+
+scoped[barrier] notation "t1" => barrier.t1
+open scoped barrier
+#check t1
+
+def test_event (e : Event) (h : e.tagType = barrier) (c : e.tag = barrier.t1) :=
+  e.tagType = barrier ∧ e.tag = cast h.symm t1
+
+#check barrier.t1
