@@ -30,11 +30,12 @@ elab "defcat" "<" filename:str ">" : command => do
     let s <- IO.FS.readFile path
     let model := "[model| " ++ fn.toString ++ " " ++ (removeComments s) ++ "]"
     -- Add the declaration to the environment
+    dbg_trace model
     evalCat model
 
 section Test
 
-defcat <"linux-test.bell">
+defcat <"linux.bell.test">
 #check Accesses.ACQUIRE
 #check Accesses.MB
 

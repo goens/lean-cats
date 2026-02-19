@@ -133,6 +133,7 @@ macro_rules
       => X.evts.R)
   | `([annotable-events| B]) => `(fun X : CandidateExecution => X.evts.B)
   | `([annotable-events| F]) => `(fun X : CandidateExecution => X.evts.F)
+  | `([annotable-events| RMW]) => `(fun X : CandidateExecution => X.evts.RMW)
 
 macro_rules
   -- | `([predefined-events| ___]) => __ TODO!(figure all the definiations of all the events. (⋃?))
@@ -158,6 +159,10 @@ macro_rules
     `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
       := [assertion| $a] ([expr| $e] evts X))
 
+  | `([inst| ~$a:assertion $e as $nm:cat_ident]) => do
+    `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
+      := ¬[assertion| $a] ([expr| $e] evts X))
+
   | `([inst| enum $nm:cat_ident = $[ $tags:cat_ident ]||*]) => do
     let nmIdent : TSyntax `ident := nm
     -- Convert each cat_ident tag to a plain Lean ident (handles multi-hyphen names like rcu-lock → rcu_lock).
@@ -176,6 +181,15 @@ macro_rules
       `(def $tagId := $qualName)
     let ret := #[indef, decEq, tagInst] ++ aliases
     return mkNullNode ret
+
+  | `([inst| flag $_:assertion $_:expr as $_:expr]) => do
+    -- We ignore the flag for now, since it doesn't change the states of the execution, it's just used to witness the assertion.
+    return mkNullNode #[]
+
+  | `([inst| instructions $_a:annotable_events [ $_c:cat_ident ]]) => do
+    -- TODO(Nikolas): Add instructions support for this.
+    -- By now the instructions are ignored because we don't make sure the semantics of the instrutions.
+    return mkNullNode #[]
 
 macro_rules
   -- Create the model.
@@ -207,4 +221,35 @@ macro_rules
 #check Barriers.rcu_lock
 #check Barriers.after_unlock_lock
 
+[model| linux
+
+enum Accesses = ONCE  ||
+  RELEASE  ||
+  ACQUIRE  ||
+  NORETURN  ||
+  MB
+instructions R[Accesses]
+instructions W[Accesses]
+instructions RMW[Accesses]
+
+enum Barriers = wmb  ||
+  rmb  ||
+  MB  ||
+  barrier  ||
+  rcu-lock   ||
+  rcu-unlock  ||
+  sync-rcu  ||
+  before-atomic  ||
+  after-atomic  ||
+  after-spinlock  ||
+  after-unlock-lock  ||
+  after-srcu-read-unlock
+instructions F[Barriers]
+
+
+let FailedRMW = RMW \ (domain(rmw) | range(rmw))
+let Acquire = ACQUIRE \ W \ FailedRMW
+let Release = RELEASE \ R \ FailedRMW
+let Mb = MB \ FailedRMW
+let Noreturn = NORETURN \ W]
 -- Check the instruction sets
