@@ -4,8 +4,6 @@ import LeanCats.Relations
 import LeanCats.Data
 import LeanCats.Basic
 
-set_option quotPrecheck false
-
 open Lean Elab Command Term Meta
 open Data
 

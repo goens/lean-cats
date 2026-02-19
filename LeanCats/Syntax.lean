@@ -105,6 +105,7 @@ syntax:71 expr "^-1" : expr
 
 syntax assertion expr ("as" cat_ident)? : inst
 syntax "let" cat_ident "=" expr : inst
+syntax "enum" cat_ident "=" sepBy(cat_ident, "||")  : inst
 
 syntax "enum" cat_ident "=" sepBy(cat_ident, "||") : inst
 -- event class can be R W F B RMW or a custom name like SRCU
