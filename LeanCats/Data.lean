@@ -82,11 +82,9 @@ What we want is a:
   enum B = 'z | 'a
   etc
 
--- By default it's Event, every time we use it, we should use (Tag Event) to know it's an event tag.
-class Tag (t : Type) where.
-
 -/
 
--- instructions W [Tag]
+-- By default it's Event, every time we use it, we should use (Tag Event) to know it's an event tag.
+class Tag (t : Type) where
 
 end Data

@@ -35,7 +35,6 @@ syntax "forall" : keyword
 syntax "from" : keyword
 syntax "fun" : keyword
 syntax "in" : keyword
-syntax "instructions" : keyword
 syntax "let" : keyword
 syntax "match" : keyword
 syntax "procedure" : keyword
@@ -91,7 +90,7 @@ syntax "(" expr ")" : dsl_term
 syntax cat_ident : dsl_term
 
 syntax ident : cat_ident
-syntax ident"-"ident : cat_ident
+syntax ident ("-" ident)+ : cat_ident
 
 syntax dsl_term:51 : expr
 
@@ -106,7 +105,10 @@ syntax:71 expr "^-1" : expr
 
 syntax assertion expr ("as" cat_ident)? : inst
 syntax "let" cat_ident "=" expr : inst
-syntax "enum" cat_ident "=" sepBy(cat_ident, "||")  : inst
+
+syntax "enum" cat_ident "=" sepBy(cat_ident, "||") : inst
+-- event class can be R W F B RMW or a custom name like SRCU
+syntax "instructions" cat_ident "[" cat_ident "]" : inst
 
 syntax "(*" ident* "*)" : inst
 syntax "include" str : inst

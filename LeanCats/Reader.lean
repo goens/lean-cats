@@ -31,3 +31,11 @@ elab "defcat" "<" filename:str ">" : command => do
     let model := "[model| " ++ fn.toString ++ " " ++ (removeComments s) ++ "]"
     -- Add the declaration to the environment
     evalCat model
+
+section Test
+
+defcat <"linux-test.bell">
+#check Accesses.ACQUIRE
+#check Accesses.MB
+
+end Test
