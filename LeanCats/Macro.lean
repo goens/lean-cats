@@ -8,16 +8,15 @@ open Lean Elab Command Term Meta
 open Data
 
 syntax "[model|" ident inst* "]" : command
-syntax "[expr|" expr "]" : term
+syntax "[expr|" expr "," cat_ident "," cat_ident "]" : term
 syntax "[keyword|" keyword "]" : term
 syntax "[assertion|" assertion "]" : term
-
-syntax "[inst|" inst "]" : command
-syntax "[annotable-events|" annotable_events "]" : term -- Set
-syntax "[predefined-events|" predefined_events "]" : term
-syntax "[reserved|" reserved "]" : term
+syntax "[inst|" inst "," cat_ident "," cat_ident "]" : command
+syntax "[annotable-events|" annotable_events "," cat_ident "," cat_ident "]" : term -- Set
+syntax "[predefined-events|" predefined_events "," cat_ident "," cat_ident "]" : term
+syntax "[reserved|" reserved "," cat_ident "," cat_ident "]" : term
 syntax "[predefined-relations|" predefined_relations "]" : term
-syntax "[dsl-term|" dsl_term "]" : term
+syntax "[dsl-term|" dsl_term "," cat_ident "," cat_ident "]" : term
 
 -- Walk any cat_ident syntax tree, collect all ident leaves, and join with "_".
 -- This handles plain idents, tick-prefixed ('ONCE), and multi-hyphen (rcu-lock, after-unlock-lock).
@@ -37,50 +36,41 @@ instance : Coe (TSyntax `cat_ident) (TSyntax `ident) where
   coe s := mkIdent (catIdentToName s.raw)
 
 macro_rules
-  | `([expr| $e₁:expr | $e₂:expr]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      CatRel.union ([expr| $e₁] evts X) ([expr| $e₂] evts X))
+  | `([expr| $e₁:expr | $e₂:expr, $evts, $X]) =>
+    `(CatRel.union ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
 
-  | `([expr| $e₁:expr & $e₂:expr]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      CatRel.inter ([expr| $e₁] evts X) ([expr| $e₂] evts X))
+  | `([expr| $e₁:expr & $e₂:expr, $evts, $X]) =>
+    `(CatRel.inter ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
 
-  | `([expr| $e₁:expr ; $e₂:expr]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      Rel.comp ([expr| $e₁] evts X) ([expr| $e₂] evts X))
+  | `([expr| $e₁:expr ; $e₂:expr, $evts, $X]) =>
+    `(Rel.comp ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
 
-  | `([expr| $e₁:expr * $e₂:expr]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      CatRel.prod ([expr| $e₁] evts X) ([expr| $e₂] evts X))
+  | `([expr| $e₁:expr * $e₂:expr, $evts, $X]) =>
+    `(CatRel.prod ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
 
-  | `([expr| $e^-1]) =>
-    `(fun X : CandidateExecution => Rel.inv ([expr| $e] X))
+  | `([expr| $e^-1, $evts, $X]) =>
+    `(Rel.inv ([expr| $e, $evts, $X]))
 
-  | `([expr| $r:reserved]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
-      [reserved| $r] evts X)
+  | `([expr| $r:reserved, $evts, $X]) =>
+    `([reserved| $r, $evts, $X])
 
-  | `([expr| ($e:expr)]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
-      [expr| $e] evts X)
+  | `([expr| ($e:expr), $evts, $X]) =>
+    `([expr| $e, $evts, $X])
 
-  | `([expr| $t:dsl_term]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
-      [dsl-term| $t] evts X)
+  | `([expr| $t:dsl_term, $evts, $X]) =>
+    `(([dsl-term| $t, $evts, $X]))
 
-  | `([expr| $i:cat_ident ($e:expr)]) => do
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
-      ($i evts X) ([expr| $e] evts X))
-
+  | `([expr| $i:cat_ident ($e:expr), $evts, $X]) => do
+    `(($i $evts $X) ([expr| $e, $evts, $X]))
 
 macro_rules
-  | `([dsl-term| $i:cat_ident]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
-      $i evts X)
+  | `([dsl-term| $i:cat_ident, $evts, $X]) =>
+      `($i $evts $X)
 
 macro_rules
-  | `([reserved| $r:predefined_relations]) => `([predefined-relations| $r])
-  | `([reserved| $e:predefined_events]) => `([predefined-events| $e])
+  | `([reserved| $r:predefined_relations, $evts, $X]) =>
+    `([predefined-relations| $r])
+  | `([reserved| $e:predefined_events, $evts, $X]) => `([predefined-events| $e, $evts, $X])
 
 macro_rules
   | `([predefined-relations| fr]) =>
@@ -130,45 +120,62 @@ macro_rules
   | `([assertion| empty]) => `(CatRel.IsEmpty)
 
 macro_rules
-  | `([annotable-events| W]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
-      => X.evts.W)
-  | `([annotable-events| R]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
-      => X.evts.R)
-  | `([annotable-events| B]) => `(fun X : CandidateExecution => X.evts.B)
-  | `([annotable-events| F]) => `(fun X : CandidateExecution => X.evts.F)
-  | `([annotable-events| RMW]) => `(fun X : CandidateExecution => X.evts.RMW)
+  | `([annotable-events| W, $evts, $X]) =>
+    let nm := mkIdent "W".toName
+    `(($X.$evts.$nm : Set Event))
+  | `([annotable-events| R, $evts, $X]) =>
+    let nm := mkIdent "R".toName
+    `(($X.$evts.$nm : Set Event))
+  | `([annotable-events| B, $evts, $X]) =>
+    let nm := mkIdent "B".toName
+    `(($X.$evts.$nm : Set Event))
+  | `([annotable-events| F, $evts, $X]) =>
+    let nm := mkIdent "F".toName
+    `(($X.$evts.$nm : Set Event))
+  | `([annotable-events| RMW, $evts, $X]) =>
+    let nm := mkIdent "RMW".toName
+    `(($X.$evts.$nm : Set Event))
+
+namespace TestAnnotableEvents
+variable (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
+def a := [annotable-events| R, evts, X]
+#reduce a
+end TestAnnotableEvents
 
 macro_rules
   -- | `([predefined-events| ___]) => __ TODO!(figure all the definiations of all the events. (⋃?))
-  | `([predefined-events| IW]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
-      => X.evts.IW)
+  | `([predefined-events| IW, $evts, $X]) =>
+    let nm := mkIdent "IW".toName
+    `($X.$evts.$nm)
 
-  | `([predefined-events| M]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
-      => X.evts.W ∪ X.evts.R)
+  | `([predefined-events| M, $evts, $X]) =>
+    let nm := mkIdent "M".toName
+    `($X.$evts.$nm)
 
-  | `([predefined-events| $a:annotable_events]) => `([annotable-events| $a])
+  | `([predefined-events| $a:annotable_events, $evts, $X]) =>
+    `([annotable-events| $a, $evts, $X])
+
+namespace TestPredefinedEvents
+variable (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
+def a := [predefined-events| R, evts, X]
+#reduce a
+end TestPredefinedEvents
 
 macro_rules
   -- We just ignore the include inst.
-  | `([inst| include $_filename:str]) => return mkNullNode
+  | `([inst| include $_filename:str , $_ , $_]) => return mkNullNode
 
   -- TODO(Don't know how the coe works here, maybe ask others? Like the coe works, okay, but how do I know it's value?)
-  | `([inst| let $nm:cat_ident = $e]) =>
-    `(@[simp] def $nm := [expr|$e])
+  | `([inst| let $nm:cat_ident = $e, $evts, $X]) =>
+    `(@[simp] def $nm := [expr|$e, $evts, $X])
 
-  | `([inst| $a:assertion $e as $nm:cat_ident]) => do
-    `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
-      := [assertion| $a] ([expr| $e] evts X))
+  | `([inst| $a:assertion $e as $nm:cat_ident, $evts, $X]) => do
+    `([assertion| $a] ([expr| $e, $evts, $X]))
 
-  | `([inst| ~$a:assertion $e as $nm:cat_ident]) => do
-    `(@[simp] def $nm (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) : Prop
-      := ¬[assertion| $a] ([expr| $e] evts X))
+  | `([inst| ~$a:assertion $e as $nm:cat_ident, $evts, $X]) => do
+    `([assertion| $a] (¬[expr| $e, $evts, $X]))
 
-  | `([inst| enum $nm:cat_ident = $[ $tags:cat_ident ]||*]) => do
+  | `([inst| enum $nm:cat_ident = $[ $tags:cat_ident ]||*, $_, $_]) => do
     let nmIdent : TSyntax `ident := nm
     -- Convert each cat_ident tag to a plain Lean ident (handles multi-hyphen names like rcu-lock → rcu_lock, and adds trailing ').
     let tagIdents : Array (TSyntax `ident) := tags.map (fun t =>
@@ -188,7 +195,7 @@ macro_rules
     let ret := #[indef, decEq, tagInst] ++ aliases
     return mkNullNode ret
 
-  | `([inst| flag $_:assertion $_:expr as $_:expr]) => do
+  | `([inst| flag $_:assertion $_:expr as $_:expr, $_, $_]) => do
     -- We ignore the flag for now, since it doesn't change the states of the execution, it's just used to witness the assertion.
     return mkNullNode #[]
 
@@ -203,11 +210,13 @@ we generate:
   `def RELEASE : Set Event := { e | e.tag = Accesses.RELEASE } ∩ R`
   ...
 -/
-elab "instructions" a:annotable_events "[" c:cat_ident "]" : command => do
-  let typeName := c.getId
-  let info <- getConstInfoInduct typeName
+elab "instructions" a:annotable_events "[" c:cat_ident "]" "," evts:cat_ident "," X:cat_ident : command => do
+  let currNamespace <- getCurrNamespace
+  -- This is used to get the full name with namespace.
+  let typeName := Name.updatePrefix (catIdentToName c.raw) currNamespace
 
-  dbg_trace "hello"
+  let info <- getConstInfoInduct typeName
+  dbg_trace typeName
 
   let commands <- info.ctors.mapM (
     fun ctor => do
@@ -216,8 +225,8 @@ elab "instructions" a:annotable_events "[" c:cat_ident "]" : command => do
       -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
       let ctorDef <-
       `(
-        @[simp] def $(mkIdent ctorName) (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) :
-          Set Event := {e | e.tag = $(mkIdent ctor) } ∩ ([annotable-events| $a] evts X)
+        abbrev $(mkIdent ctorName) :
+          Set Event := {e | e.tag = $(mkIdent ctor) } ∩ ([annotable-events| $a, $evts, $X])
       )
       return ctorDef
   )
@@ -238,11 +247,18 @@ macro_rules
 -- Linux-kernel memory consistency model  ("linux.bell" excerpt)
 -- Comments (*...*) and tick-prefixes (') are stripped by the preprocessor
 -- before these lines reach the Lean syntax; we write the cleaned form here.
-[inst| enum Accesses = ONCE || RELEASE || ACQUIRE || NORETURN || MB]
 
-instructions R[Accesses]
+namespace TestInstructions
+variable (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
+[inst| enum Accesses = ONCE || RELEASE || ACQUIRE || NORETURN || MB, evts, X]
+#check Accesses
+instructions R[Accesses] , evts, X
 
 #reduce ONCE
+end TestInstructions
+
+#check TestInstructions.ONCE
+
 #reduce RELEASE
 
 [inst| enum Barriers =
