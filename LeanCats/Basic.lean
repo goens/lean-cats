@@ -12,7 +12,7 @@ structure CandidateExecution
   [IsStrictTotalOrder Event (preCo evts)]
   where
   (evts : Events)
-  (_po : Rel Event Event)
-  (_rf : Rel Event Event)
-  (_fr : Rel Event Event)
+  (_po : SetRel Event Event)
+  (_rf : SetRel Event Event)
+  (_fr : SetRel Event Event)
   (_IW : Set Event)

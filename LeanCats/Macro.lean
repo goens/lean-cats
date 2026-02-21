@@ -215,20 +215,10 @@ elab "instructions" a:annotable_events "[" c:cat_ident "]" : command => do
       let ctorName : Name := ctor.lastComponentAsString.dropEnd 1 |>.toName
       -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
       let ctorDef <- `(@[simp] def $(mkIdent ctorName) : Set Event := {e | e.tag = $(mkIdent ctor) } )
-
-      dbg_trace ctorDef
-
       return ctorDef
   )
-
-
   -- A hack to return the commands, the mkNullNode create a SyntaxTree and we use the elabCommand to execute it.
   elabCommand $ mkNullNode commands.toArray
-
-#check elabCommand
-#check elabMacro
-
--- def ONCE : Set Event := { e | e.tag = Accesses.ONCE } ∩ R
 
 macro_rules
   -- Create the model.
@@ -247,6 +237,8 @@ macro_rules
 [inst| enum Accesses = ONCE || RELEASE || ACQUIRE || NORETURN || MB]
 
 instructions R[Accesses]
+
+#reduce ONCE
 
 [inst| enum Barriers =
     wmb || rmb || barrier || rcu_read_lock || rcu_read_unlock ||

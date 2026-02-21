@@ -1,21 +1,13 @@
 import LeanCats.Data
+import Mathlib.Data.Rel
 
 namespace CatRel
 open Data
 
-@[simp] def union (r₁ r₂ : Rel Event Event) := λ x y ↦ r₁ x y ∨ r₂ x y
-@[simp] def inter (r₁ r₂ : Rel Event Event) := λ x y ↦ r₁ x y ∧ r₂ x y
-
 -- Not sure if this is the correct definition of cartesian product.
-def prod (s₁ s₂ : Set Event) : Rel Event Event := λ e₁ e₂ ↦ e₁ ∈ s₁ ∧ e₂ ∈ s₂
+def prod (s₁ s₂ : Set Event) : SetRel Event Event := s₁.prod s₂
 
-#check Rel.inv
-
-instance instUnionRelEvents : Union (Event → Event → Prop) := ⟨union⟩
-instance : Union (Rel Event Event) := instUnionRelEvents
-instance : Inter (Rel Event Event) := ⟨inter⟩
-
-@[simp] def domain (r : Rel Event Event) : Set Event := λ e ↦ ∃ e', r e e'
+#check SetRel.inv
 
 @[simp] def R : Set Event :=
   λ e ↦ e.effect.op = Op.read
@@ -87,17 +79,14 @@ def po (evts : Events) (e₁ e₂ : Event) : Prop :=
 instance (evts : Events) : IsStrictOrder Event (rf evts) where
   irrefl :=
   by
-    intro e
-    intro hin
+    intro e hin
     have h₁ : e.effect.op = Op.write := by apply hin.lWrite
     have h₂ : e.effect.op = Op.read := by apply hin.rRead
     rw [h₁] at h₂
     contradiction
   trans :=
   by
-    intro a b c
-    intro hrfab
-    intro hrfbc
+    intro a b c hrfab hrfbc
     have lIn : a ∈ evts := by apply hrfab.lIn
     have rIn : c ∈ evts := by apply hrfbc.rIn
     have lWrite : a.effect.op = Op.write := by apply hrfab.lWrite
@@ -113,8 +102,7 @@ instance (evts : Events) : IsStrictOrder Event (rf evts) where
 
 theorem rfIsTransitive {evts : Events} : Transitive (rf evts) :=
   by
-    intro a b c
-    intro rab rbc
+    intro a b c rab rbc
     obtain ⟨lInab, rInab, lWriteab, rReadab, sameTargetab⟩ := rab
     obtain ⟨lInbc, rInbc, lWritebc, rReadbc, sameTargetbc⟩ := rbc
     rw [<-sameTargetab] at sameTargetbc

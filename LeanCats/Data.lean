@@ -24,13 +24,14 @@ structure Effect : Type where
   isFinalWrite : Bool
 deriving Inhabited, BEq, Repr, DecidableEq
 
-class Event where
+class Tag (t : Type) where
+
+structure Event where
   (id : Nat)   -- Unique identifier, consistent with program order for a given thread
   (t_id : Nat)      -- Thread ID
   (t : Thread)    -- Associated thread
   (effect : Effect) -- Action performed
-  (tagType : Type) -- We attach a type to it.
-  (tag : tagType)
+  [tag {tagType} [Tag tagType] : tagType]
 
 @[simp] def reads : Set Event :=
   λ e ↦ e.effect.op = Op.read
@@ -70,8 +71,5 @@ What we want is a:
   etc
 
 -/
-
--- By default it's Event, every time we use it, we should use (Tag Event) to know it's an event tag.
-class Tag (t : Type) where
 
 end Data
