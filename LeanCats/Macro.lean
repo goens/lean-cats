@@ -35,6 +35,9 @@ partial def catIdentToName (stx : Syntax) : Name :=
 instance : Coe (TSyntax `cat_ident) (TSyntax `ident) where
   coe s := mkIdent (catIdentToName s.raw)
 
+instance : Coe (TSyntax `ident) (TSyntax `cat_ident) where
+  coe s := mkNode `cat_ident #[s]
+
 macro_rules
   | `([expr| $e₁:expr | $e₂:expr, $evts, $X]) =>
     `(CatRel.union ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
@@ -213,7 +216,7 @@ we generate:
 elab "instructions" a:annotable_events "[" c:cat_ident "]" "," evts:cat_ident "," X:cat_ident : command => do
   let currNamespace <- getCurrNamespace
   -- This is used to get the full name with namespace.
-  let typeName := Name.updatePrefix (catIdentToName c.raw) currNamespace
+  let typeName := Name.updatePrefix c.getId currNamespace
 
   let info <- getConstInfoInduct typeName
   dbg_trace typeName
@@ -237,11 +240,14 @@ macro_rules
   -- Create the model.
   | `([model| $n:ident $x:inst*]) => do
     let nstart <- `(namespace $n)
+    let evts := mkIdent `evts
+    let X := mkIdent `X
+    let vars <- `(variable ($evts : Events) [IsStrictTotalOrder Event (CatRel.preCo $evts)] ($X : CandidateExecution $evts))
     let nend <- `(end $n)
-    let insts <- x.mapM (fun ins => `([inst| $ins]))
+    let insts <- x.mapM (fun ins => `([inst| $ins, $evts, $X]))
 
     -- let insts : Array (TSyntax `command) := #[]
-    let ret := #[nstart] ++ insts ++ #[nend]
+    let ret := #[nstart] ++ #[vars] ++ insts ++ #[nend]
     return mkNullNode ret
 
 -- Linux-kernel memory consistency model  ("linux.bell" excerpt)
@@ -259,9 +265,8 @@ end TestInstructions
 
 #check TestInstructions.ONCE
 
-#reduce RELEASE
-
-[inst| enum Barriers =
+[model| t
+  enum Barriers =
     wmb || rmb || barrier || rcu_read_lock || rcu_read_unlock ||
     rcu_lock || rcu_unlock || sync_rcu ||
     before_atomic || after_atomic ||
@@ -271,39 +276,36 @@ end TestInstructions
 
 -- Spot-check generated names
 -- This tags used as the event tags, we don't refer them directly.
-#check Accesses.ONCE'
-#check Accesses.RELEASE'
-#check Barriers.rcu_lock'
-#check Barriers.after_unlock_lock'
+#check t.Barriers.wmb'
 
-[model| linux
-
-enum Accesses = ONCE  ||
-  RELEASE  ||
-  ACQUIRE  ||
-  NORETURN  ||
-  MB
-instructions R[Accesses]
-instructions W[Accesses]
-instructions RMW[Accesses]
-
-enum Barriers = wmb  ||
-  rmb  ||
-  barrier  ||
-  rcu-lock   ||
-  rcu-unlock  ||
-  sync-rcu  ||
-  before-atomic  ||
-  after-atomic  ||
-  after-spinlock  ||
-  after-unlock-lock  ||
-  after-srcu-read-unlock
-instructions F[Barriers]
-
-let FailedRMW = RMW \ (domain(rmw) | range(rmw))
-
-let Acquire = ACQUIRE \ W \ FailedRMW
-let Release = RELEASE \ R \ FailedRMW
-let Mb = MB \ FailedRMW
-let Noreturn = NORETURN \ W]
--- Check the instruction sets
+-- [model| linux
+--
+-- enum Accesses = ONCE  ||
+--   RELEASE  ||
+--   ACQUIRE  ||
+--   NORETURN  ||
+--   MB
+-- instructions R[Accesses]
+-- instructions W[Accesses]
+-- instructions RMW[Accesses]
+--
+-- enum Barriers = wmb  ||
+--   rmb  ||
+--   barrier  ||
+--   rcu-lock   ||
+--   rcu-unlock  ||
+--   sync-rcu  ||
+--   before-atomic  ||
+--   after-atomic  ||
+--   after-spinlock  ||
+--   after-unlock-lock  ||
+--   after-srcu-read-unlock
+-- instructions F[Barriers]
+--
+-- let FailedRMW = RMW \ (domain(rmw) | range(rmw))
+--
+-- let Acquire = ACQUIRE \ W \ FailedRMW
+-- let Release = RELEASE \ R \ FailedRMW
+-- let Mb = MB \ FailedRMW
+-- let Noreturn = NORETURN \ W]
+-- -- Check the instruction sets
