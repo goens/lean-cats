@@ -68,6 +68,11 @@ macro_rules
     `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
       [dsl-term| $t] evts X)
 
+  | `([expr| $i:cat_ident ($e:expr)]) => do
+    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
+      ($i evts X) ([expr| $e] evts X))
+
+
 macro_rules
   | `([dsl-term| $i:cat_ident]) =>
     `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) =>
@@ -165,8 +170,9 @@ macro_rules
 
   | `([inst| enum $nm:cat_ident = $[ $tags:cat_ident ]||*]) => do
     let nmIdent : TSyntax `ident := nm
-    -- Convert each cat_ident tag to a plain Lean ident (handles multi-hyphen names like rcu-lock → rcu_lock).
-    let tagIdents : Array (TSyntax `ident) := tags.map (fun t => mkIdent (catIdentToName t.raw))
+    -- Convert each cat_ident tag to a plain Lean ident (handles multi-hyphen names like rcu-lock → rcu_lock, and adds trailing ').
+    let tagIdents : Array (TSyntax `ident) := tags.map (fun t =>
+      mkIdent (Name.mkSimple ((catIdentToName t.raw).toString ++ "'")))
     let indef <- `(
       inductive $nmIdent where $[| $tagIdents:ident ]*
     )
@@ -186,10 +192,43 @@ macro_rules
     -- We ignore the flag for now, since it doesn't change the states of the execution, it's just used to witness the assertion.
     return mkNullNode #[]
 
-  | `([inst| instructions $_a:annotable_events [ $_c:cat_ident ]]) => do
-    -- TODO(Nikolas): Add instructions support for this.
-    -- By now the instructions are ignored because we don't make sure the semantics of the instrutions.
-    return mkNullNode #[]
+/--
+Processes `instructions A[EnumType]` by generating a definition for each constructor of `EnumType`.
+Specifically, for each constructor `C` of `EnumType`, we generate:
+  `def C : Set Event := { e | e.tag = EnumType.C } ∩ A`
+
+For example, given `enum Accesses = ONCE || RELEASE || ...` and `instructions R[Accesses]`,
+we generate:
+  `def ONCE : Set Event := { e | e.tag = Accesses.ONCE } ∩ R`
+  `def RELEASE : Set Event := { e | e.tag = Accesses.RELEASE } ∩ R`
+  ...
+-/
+elab "instructions" a:annotable_events "[" c:cat_ident "]" : command => do
+  let typeName := c.getId
+  let info <- getConstInfoInduct typeName
+
+  dbg_trace "hello"
+
+  let commands <- info.ctors.mapM (
+    fun ctor => do
+      -- Make the constructors name correct by removing the end tick.
+      let ctorName : Name := ctor.lastComponentAsString.dropEnd 1 |>.toName
+      -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
+      let ctorDef <- `(@[simp] def $(mkIdent ctorName) : Set Event := {e | e.tag = $(mkIdent ctor) } )
+
+      dbg_trace ctorDef
+
+      return ctorDef
+  )
+
+
+  -- A hack to return the commands, the mkNullNode create a SyntaxTree and we use the elabCommand to execute it.
+  elabCommand $ mkNullNode commands.toArray
+
+#check elabCommand
+#check elabMacro
+
+-- def ONCE : Set Event := { e | e.tag = Accesses.ONCE } ∩ R
 
 macro_rules
   -- Create the model.
@@ -207,6 +246,8 @@ macro_rules
 -- before these lines reach the Lean syntax; we write the cleaned form here.
 [inst| enum Accesses = ONCE || RELEASE || ACQUIRE || NORETURN || MB]
 
+instructions R[Accesses]
+
 [inst| enum Barriers =
     wmb || rmb || barrier || rcu_read_lock || rcu_read_unlock ||
     rcu_lock || rcu_unlock || sync_rcu ||
@@ -216,10 +257,11 @@ macro_rules
 ]
 
 -- Spot-check generated names
-#check Accesses.ONCE
-#check Accesses.RELEASE
-#check Barriers.rcu_lock
-#check Barriers.after_unlock_lock
+-- This tags used as the event tags, we don't refer them directly.
+#check Accesses.ONCE'
+#check Accesses.RELEASE'
+#check Barriers.rcu_lock'
+#check Barriers.after_unlock_lock'
 
 [model| linux
 
@@ -234,7 +276,6 @@ instructions RMW[Accesses]
 
 enum Barriers = wmb  ||
   rmb  ||
-  MB  ||
   barrier  ||
   rcu-lock   ||
   rcu-unlock  ||
@@ -246,8 +287,8 @@ enum Barriers = wmb  ||
   after-srcu-read-unlock
 instructions F[Barriers]
 
-
 let FailedRMW = RMW \ (domain(rmw) | range(rmw))
+
 let Acquire = ACQUIRE \ W \ FailedRMW
 let Release = RELEASE \ R \ FailedRMW
 let Mb = MB \ FailedRMW
