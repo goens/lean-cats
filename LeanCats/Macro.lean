@@ -214,7 +214,11 @@ elab "instructions" a:annotable_events "[" c:cat_ident "]" : command => do
       -- Make the constructors name correct by removing the end tick.
       let ctorName : Name := ctor.lastComponentAsString.dropEnd 1 |>.toName
       -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
-      let ctorDef <- `(@[simp] def $(mkIdent ctorName) : Set Event := {e | e.tag = $(mkIdent ctor) } )
+      let ctorDef <-
+      `(
+        @[simp] def $(mkIdent ctorName) (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts) :
+          Set Event := {e | e.tag = $(mkIdent ctor) } ∩ ([annotable-events| $a] evts X)
+      )
       return ctorDef
   )
   -- A hack to return the commands, the mkNullNode create a SyntaxTree and we use the elabCommand to execute it.
@@ -239,6 +243,7 @@ macro_rules
 instructions R[Accesses]
 
 #reduce ONCE
+#reduce RELEASE
 
 [inst| enum Barriers =
     wmb || rmb || barrier || rcu_read_lock || rcu_read_unlock ||

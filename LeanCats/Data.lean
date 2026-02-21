@@ -52,10 +52,10 @@ structure Events where
   (Acquire : Set Event)
   (Release : Set Event)
   (IW : Set Event)
-  (Read : Set Event)
-  (Write : Set Event)
-  (Branch : Set Event)
-  (Fence : Set Event)
+  (R : Set Event)
+  (W : Set Event)
+  (B : Set Event)
+  (F : Set Event)
   (RMW : Set Event)
 
 instance : Membership Event Events where
