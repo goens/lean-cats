@@ -3,20 +3,24 @@ import Lean
 import LeanCats.Relations
 import LeanCats.Data
 import LeanCats.Basic
+import Std.Data.HashMap
+import LeanCats.HashMapExt
 
 open Lean Elab Command Term Meta
 open Data
 
 syntax "[model|" ident inst* "]" : command
-syntax "[expr|" expr "," cat_ident "," cat_ident "]" : term
+syntax (name := catexpr) "[expr|" expr "," cat_ident "," cat_ident "]" : term
 syntax "[keyword|" keyword "]" : term
 syntax "[assertion|" assertion "]" : term
-syntax "[inst|" inst "," cat_ident "," cat_ident "]" : command
+syntax (name := catinst) "[inst|" inst "," cat_ident "," cat_ident "]" : command
 syntax "[annotable-events|" annotable_events "," cat_ident "," cat_ident "]" : term -- Set
 syntax "[predefined-events|" predefined_events "," cat_ident "," cat_ident "]" : term
 syntax "[reserved|" reserved "," cat_ident "," cat_ident "]" : term
-syntax "[predefined-relations|" predefined_relations "]" : term
+syntax "[predefined-relations|" predefined_relations "," cat_ident "," cat_ident "]" : term
 syntax "[dsl-term|" dsl_term "," cat_ident "," cat_ident "]" : term
+
+initialize tagsAccExt : HashMapExtension String (List String) ← mkHashMapExtension `tags String (List String)
 
 -- Walk any cat_ident syntax tree, collect all ident leaves, and join with "_".
 -- This handles plain idents, tick-prefixed ('ONCE), and multi-hyphen (rcu-lock, after-unlock-lock).
@@ -38,9 +42,12 @@ instance : Coe (TSyntax `cat_ident) (TSyntax `ident) where
 instance : Coe (TSyntax `ident) (TSyntax `cat_ident) where
   coe s := mkNode `cat_ident #[s]
 
+instance : Coe (TSyntax `ident) (TSyntax `annotable_events) where
+  coe s := mkNode `annotable_events #[s]
+
 macro_rules
   | `([expr| $e₁:expr | $e₂:expr, $evts, $X]) =>
-    `(CatRel.union ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
+    `(Set.union ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
 
   | `([expr| $e₁:expr & $e₂:expr, $evts, $X]) =>
     `(CatRel.inter ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
@@ -50,6 +57,9 @@ macro_rules
 
   | `([expr| $e₁:expr * $e₂:expr, $evts, $X]) =>
     `(CatRel.prod ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
+
+  | `([expr| $e₁:expr \ $e₂:expr, $evts, $X]) =>
+    `(Set.diff ([expr| $e₁, $evts, $X]) ([expr| $e₂, $evts, $X]))
 
   | `([expr| $e^-1, $evts, $X]) =>
     `(Rel.inv ([expr| $e, $evts, $X]))
@@ -64,7 +74,53 @@ macro_rules
     `(([dsl-term| $t, $evts, $X]))
 
   | `([expr| $i:cat_ident ($e:expr), $evts, $X]) => do
-    `(($i $evts $X) ([expr| $e, $evts, $X]))
+    -- function call.
+    `(($i) ([expr| $e, $evts, $X]))
+
+-- @[term_elab catexpr]
+-- def elabCatExpr : TermElab := fun stx type? => do
+--   match stx with
+--   | `([expr| $i:cat_ident ($e:expr), $evts, $X]) => do
+--     let catName : Name := catIdentToName i.raw
+--     -- We need to check if it's tag set accumulated by the `instructions` command.
+--     let tagsMap : Option (List String) <- tagsAccExt.find? catName.toString
+--     match tagsMap with
+--     | some annotableEvts => do
+--       -- If it's an instruction set, we need to generate the union of all the tags in the set.
+--       let annotedEvts <- annotableEvts.mapM (fun a => `([annotable-events| $(mkIdent a.toName), $evts, $X]))
+--       let dnf <- annotedEvts.foldlM (fun acc evt => do
+--         let con <- `($acc ∨ [annotable-events| $evt, $evts, $X])
+--         return con
+--       ) (mk mkNullNode #[])
+--
+--       dbg_trace dnf
+--
+--       let currNamespace <- getCurrNamespace
+--       -- This is used to get the full name with namespace.
+--       let typeName := Name.updatePrefix i.getId currNamespace
+--       let env <- getEnv
+--
+--       let info <- getConstInfoInduct typeName
+--       dbg_trace typeName
+--
+--       let commands <- info.ctors.mapM (
+--         fun ctor => do
+--         -- Make the constructors name correct by removing the end tick.
+--         let ctorName : Name := ctor.lastComponentAsString.dropEnd 1 |>.toName
+--         -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
+--         let ctorDef <-
+--         `(
+--           abbrev $(mkIdent ctorName) :
+--             Set Event := {e | e.tag = $(mkIdent ctor) } ∩ $dnf
+--         )
+--         return ctorDef
+--       )
+--
+--       pure (← elabTerm (← `(($i $evts $X) ([expr| $e, $evts, $X]))) type?)
+--     | none =>
+--       pure (← elabTerm (← `(($i $evts $X) ([expr| $e, $evts, $X]))) type?)
+--   | _ => Lean.Elab.throwUnsupportedSyntax
+--   -- elabTerm expandedStx expectedType?
 
 macro_rules
   | `([dsl-term| $i:cat_ident, $evts, $X]) =>
@@ -72,29 +128,32 @@ macro_rules
 
 macro_rules
   | `([reserved| $r:predefined_relations, $evts, $X]) =>
-    `([predefined-relations| $r])
+    `([predefined-relations| $r, $evts, $X])
   | `([reserved| $e:predefined_events, $evts, $X]) => `([predefined-events| $e, $evts, $X])
 
 macro_rules
-  | `([predefined-relations| fr]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      X._fr)
+  | `([predefined-relations| fr, $_, $X]) =>
+    let rfIdent := mkIdent "_fr".toName
+    `($X.$rfIdent)
 
-  | `([predefined-relations| po]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      X._po)
+  | `([predefined-relations| po, $_, $X]) =>
+    let rfIdent := mkIdent "_po".toName
+    `($X.$rfIdent)
 
-  | `([predefined-relations| rf]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      X._rf)
+  | `([predefined-relations| rf, $_, $X]) =>
+    let rfIdent := mkIdent "_rf".toName
+    `($X.$rfIdent)
 
-  | `([predefined-relations| rfe]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      CatRel.external X.evts X._rf)
+  | `([predefined-relations| rfe, $_, $X]) =>
+    let rfIdent := mkIdent "_rf".toName
+    `($X.$rfIdent)
 
-  | `([predefined-relations| co]) =>
-    `(fun (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo (evts))] (X : CandidateExecution evts) =>
-      CatRel.co.wellformed evts)
+  | `([predefined-relations| rmw, $_, $X]) =>
+    let rfIdent := mkIdent "_rmw".toName
+    `($X.$rfIdent)
+
+  | `([predefined-relations| co, $evts, $_]) =>
+    `(CatRel.co.wellformed $evts)
 
 macro_rules
   | `([keyword| and]) => Lean.Macro.throwUnsupported
@@ -168,11 +227,10 @@ macro_rules
   -- We just ignore the include inst.
   | `([inst| include $_filename:str , $_ , $_]) => return mkNullNode
 
-  -- TODO(Don't know how the coe works here, maybe ask others? Like the coe works, okay, but how do I know it's value?)
   | `([inst| let $nm:cat_ident = $e, $evts, $X]) =>
     `(@[simp] def $nm := [expr|$e, $evts, $X])
 
-  | `([inst| $a:assertion $e as $nm:cat_ident, $evts, $X]) => do
+  | `([inst| $a:assertion $e as $_:cat_ident, $evts, $X]) => do
     `([assertion| $a] ([expr| $e, $evts, $X]))
 
   | `([inst| ~$a:assertion $e as $nm:cat_ident, $evts, $X]) => do
@@ -213,28 +271,35 @@ we generate:
   `def RELEASE : Set Event := { e | e.tag = Accesses.RELEASE } ∩ R`
   ...
 -/
-elab "instructions" a:annotable_events "[" c:cat_ident "]" "," evts:cat_ident "," X:cat_ident : command => do
-  let currNamespace <- getCurrNamespace
-  -- This is used to get the full name with namespace.
-  let typeName := Name.updatePrefix c.getId currNamespace
+@[command_elab catinst]
+def elabCatInst : CommandElab := fun stx => do
+  match stx with
+  | `([inst| instructions $a:annotable_events [ $c:cat_ident ] , $evts:cat_ident , $X:cat_ident]) => do
+    let currNamespace <- getCurrNamespace
+    -- This is used to get the full name with namespace.
+    let typeName := Name.updatePrefix c.getId currNamespace
 
-  let info <- getConstInfoInduct typeName
-  dbg_trace typeName
+    let info <- getConstInfoInduct typeName
+    dbg_trace typeName
 
-  let commands <- info.ctors.mapM (
-    fun ctor => do
-      -- Make the constructors name correct by removing the end tick.
-      let ctorName : Name := ctor.lastComponentAsString.dropEnd 1 |>.toName
-      -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
-      let ctorDef <-
-      `(
-        abbrev $(mkIdent ctorName) :
-          Set Event := {e | e.tag = $(mkIdent ctor) } ∩ ([annotable-events| $a, $evts, $X])
-      )
-      return ctorDef
-  )
-  -- A hack to return the commands, the mkNullNode create a SyntaxTree and we use the elabCommand to execute it.
-  elabCommand $ mkNullNode commands.toArray
+    let commands <- info.ctors.mapM (
+      fun ctor => do
+        -- Make the constructors name correct by removing the end tick.
+        let ctorName : Name := ctor.lastComponentAsString.dropEnd 1 |>.toName
+        -- TODO(Nekolas): Make this part `∩ [annotable-events| $a]` work.
+        if (<-getEnv).contains ctorName then
+          return (TSyntax.mk $ mkNullNode #[])
+        else
+          let ctorDef <-
+          `(
+            abbrev $(mkIdent ctorName) :
+              Set Event := {e | e.tag = $(mkIdent ctor) } ∩ ([annotable-events| $a, $evts, $X])
+          )
+          return ctorDef
+        )
+    -- A hack to return the commands, the mkNullNode create a SyntaxTree and we use the elabCommand to execute it.
+    elabCommand $ mkNullNode commands.toArray
+  | _ => Lean.Elab.throwUnsupportedSyntax
 
 macro_rules
   -- Create the model.
@@ -258,12 +323,14 @@ namespace TestInstructions
 variable (evts : Events) [IsStrictTotalOrder Event (CatRel.preCo evts)] (X : CandidateExecution evts)
 [inst| enum Accesses = ONCE || RELEASE || ACQUIRE || NORETURN || MB, evts, X]
 #check Accesses
-instructions R[Accesses] , evts, X
+[inst| instructions R[Accesses] , evts, X]
+
+[inst| let a = rmw, evts, X]
 
 #reduce ONCE
 end TestInstructions
 
-#check TestInstructions.ONCE
+#reduce TestInstructions.ONCE
 
 [model| t
   enum Barriers =
@@ -277,35 +344,37 @@ end TestInstructions
 -- Spot-check generated names
 -- This tags used as the event tags, we don't refer them directly.
 #check t.Barriers.wmb'
+#reduce t.Barriers.wmb'
 
--- [model| linux
---
--- enum Accesses = ONCE  ||
---   RELEASE  ||
---   ACQUIRE  ||
---   NORETURN  ||
---   MB
--- instructions R[Accesses]
--- instructions W[Accesses]
--- instructions RMW[Accesses]
---
--- enum Barriers = wmb  ||
---   rmb  ||
---   barrier  ||
---   rcu-lock   ||
---   rcu-unlock  ||
---   sync-rcu  ||
---   before-atomic  ||
---   after-atomic  ||
---   after-spinlock  ||
---   after-unlock-lock  ||
---   after-srcu-read-unlock
--- instructions F[Barriers]
---
--- let FailedRMW = RMW \ (domain(rmw) | range(rmw))
---
--- let Acquire = ACQUIRE \ W \ FailedRMW
--- let Release = RELEASE \ R \ FailedRMW
--- let Mb = MB \ FailedRMW
--- let Noreturn = NORETURN \ W]
--- -- Check the instruction sets
+abbrev domain (r : SetRel Event Event) := SetRel.dom r
+
+abbrev range (r : SetRel Event Event) := SetRel.cod r
+
+namespace LinuxTest
+[model| linux
+
+enum Accesses = ONCE  ||
+  RELEASE  ||
+  ACQUIRE  ||
+  NORETURN  ||
+  MB
+instructions R[Accesses]
+
+enum Barriers = wmb  ||
+  rmb  ||
+  barrier  ||
+  rcu-lock   ||
+  rcu-unlock  ||
+  sync-rcu  ||
+  before-atomic  ||
+  after-atomic  ||
+  after-spinlock  ||
+  after-unlock-lock  ||
+  after-srcu-read-unlock
+instructions F[Barriers]
+
+let a = rmw
+]
+
+-- Check the instruction sets
+end LinuxTest
