@@ -8,11 +8,11 @@ open CatRel
 This definination is different with the formal semantics, because the `co` is defined in [stdlib.cat](https://github.com/herd/herdtools7/blob/2a7599f8ecdbde0ed67925daf6534c1a0c26d535/herd-www/cat_includes/stdlib.cat) and
 by computation, so should declare it as the base relation. -/
 structure CandidateExecution
-  (evts : Events)
-  [IsStrictTotalOrder Event (preCo evts)]
+  (evts : Events tagType)
+  [IsStrictTotalOrder (Event tagType) (preCo evts)]
   where
-  (evts : Events)
-  (_po : SetRel Event Event)
-  (_rf : SetRel Event Event)
-  (_fr : SetRel Event Event)
-  (_rmw : SetRel Event Event)
+  (evts : Events tagType)
+  (_po : SetRel (Event tagType) (Event tagType))
+  (_rf : SetRel (Event tagType) (Event tagType))
+  (_fr : SetRel (Event tagType) (Event tagType))
+  (_rmw : SetRel (Event tagType) (Event tagType))

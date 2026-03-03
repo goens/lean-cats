@@ -24,23 +24,24 @@ structure Effect : Type where
   isFinalWrite : Bool
 deriving Inhabited, BEq, Repr, DecidableEq
 
-class Tag (t : Type) where
+variable (tagType : Type) [DecidableEq tagType] [Inhabited tagType]
 
-structure Event where
+structure Event  where
   (id : Nat)   -- Unique identifier, consistent with program order for a given thread
   (t_id : Nat)      -- Thread ID
   (t : Thread)    -- Associated thread
   (effect : Effect) -- Action performed
-  [tag {tagType} [Tag tagType] : tagType]
+  (tag : tagType)
+  deriving DecidableEq, Inhabited
 
-@[simp] def reads : Set Event :=
+@[simp] def reads : Set (Event tagType) :=
   λ e ↦ e.effect.op = Op.read
 
-@[simp] def writes : Set Event :=
+@[simp] def writes : Set (Event tagType) :=
   λ e ↦ e.effect.op = Op.write
 
-@[simp] def modifications : Set Event :=
-  reads ∪ writes
+@[simp] def modifications : Set (Event tagType) :=
+  reads tagType ∪ writes tagType
 
 -- Events can be (for brevity this is not an exhaustive list):
 -- writes, gathered in the set W, including the the set IW of initial writes coming from the prelude of the program;
@@ -48,17 +49,17 @@ structure Event where
 -- branch events, gathered in the set B;
 -- fences, gathered in the set F.
 structure Events where
-  (all : Set Event)
-  (Acquire : Set Event)
-  (Release : Set Event)
-  (IW : Set Event)
-  (R : Set Event)
-  (W : Set Event)
-  (B : Set Event)
-  (F : Set Event)
-  (RMW : Set Event)
+  (all : Set (Event tagType))
+  (Acquire : Set (Event tagType))
+  (Release : Set (Event tagType))
+  (IW : Set (Event tagType))
+  (R : Set (Event tagType))
+  (W : Set (Event tagType))
+  (B : Set (Event tagType))
+  (F : Set (Event tagType))
+  (RMW : Set (Event tagType))
 
-instance : Membership Event Events where
+instance : Membership (Event tagType) (Events tagType) where
   mem evts evt := evt ∈ evts.all
 
 /-

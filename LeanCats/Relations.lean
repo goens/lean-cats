@@ -4,24 +4,27 @@ import Mathlib.Data.Rel
 namespace CatRel
 open Data
 
+variable {tagType : Type} [DecidableEq tagType] [Inhabited tagType]
+
 -- Not sure if this is the correct definition of cartesian product.
-def prod (s₁ s₂ : Set Event) : SetRel Event Event := s₁.prod s₂
+def prod (s₁ s₂ : Set <| Event tagType) : SetRel (Event tagType) (Event tagType) := s₁.prod s₂
 
 #check SetRel.inv
 
-@[simp] def R : Set Event :=
+@[simp] def R : Set (Event tagType) :=
   λ e ↦ e.effect.op = Op.read
 
-@[simp] def W : Set Event :=
+@[simp] def W : Set (Event tagType) :=
   λ e ↦ e.effect.op = Op.write
 
-@[simp] def M : Set Event :=
+@[simp] def M : Set (Event tagType) :=
   R ∪ W
 
-@[simp] def Rel.prod (lhs rhs : Event -> Prop) : Rel Event Event :=
+@[simp] def Rel.prod (lhs rhs : Event tagType -> Prop) : Rel (Event tagType) (Event tagType) :=
   λ e₁ e₂ ↦ lhs e₁ ∧ rhs e₂
 
-theorem RelProdIsSetProd (s₁ s₂ : Event -> Prop) (e₁ e₂ : Event) :
+omit [DecidableEq tagType] [Inhabited tagType] in
+theorem RelProdIsSetProd (s₁ s₂ : Event tagType -> Prop) (e₁ e₂ : Event tagType) :
   Rel.prod s₁ s₂ e₁ e₂ = ((e₁, e₂) ∈ Set.prod s₁ s₂) :=
   by
     simp
@@ -36,27 +39,27 @@ theorem RelProdIsSetProd (s₁ s₂ : Event -> Prop) (e₁ e₂ : Event) :
       aesop
     }
 
-abbrev Acyclic (r : Rel Event Event) := ∀a : Event, ¬ Relation.TransGen r a a
+abbrev Acyclic (r : Rel (Event tagType) (Event tagType)) := ∀a : Event tagType, ¬ Relation.TransGen r a a
 
-@[simp] def Rel.internal (e₁ e₂ : Event) : Prop :=
+@[simp] def Rel.internal (e₁ e₂ : Event tagType) : Prop :=
   e₁.t_id = e₂.t_id
 
-@[simp] def Rel.external (e₁ e₂ : Event) : Prop :=
+@[simp] def Rel.external (e₁ e₂ : Event tagType) : Prop :=
   ¬ (Rel.internal e₁ e₂)
 
-@[simp] def Rel.empty (_ _ : Event) : Prop :=
+@[simp] def Rel.empty (_ _ : Event tagType) : Prop :=
   False
 
-@[simp] def Rel.loc (e₁ e₂ : Event) : Prop :=
+@[simp] def Rel.loc (e₁ e₂ : Event tagType) : Prop :=
   e₁.effect.location = e₂.effect.location
 
-@[simp] def Rel.ext (e₁ e₂ : Event) : Prop :=
+@[simp] def Rel.ext (e₁ e₂ : Event tagType) : Prop :=
   e₁.t_id ≠ e₂.t_id
 
-@[simp] def isWrite (e : Event) : Prop :=
+@[simp] def isWrite (e : Event tagType) : Prop :=
   e.effect.op = Op.write
 
-structure rf (evts : Events) (e₁ e₂ : Event) : Prop where
+structure rf (evts : Events tagType) (e₁ e₂ : Event tagType) : Prop where
   -- left one in the evts.
   lIn : e₁ ∈ evts
   rIn : e₂ ∈ evts
@@ -64,19 +67,19 @@ structure rf (evts : Events) (e₁ e₂ : Event) : Prop where
   rRead : e₂.effect.op = Op.read
   sameTarget : e₁.effect.location = e₂.effect.location
 
-@[simp] def internal (evts : Events) : Rel Event Event :=
+@[simp] def internal (evts : Events tagType) : Rel (Event tagType) (Event tagType) :=
   λ e₁ e₂ ↦ e₁ ∈ evts ∧ e₂ ∈ evts ∧ e₁.t_id = e₂.t_id
 
-@[simp] def external (evts : Events) : Rel Event Event :=
+@[simp] def external (evts : Events tagType) : Rel (Event tagType) (Event tagType) :=
   λ e₁ e₂ ↦ ¬(internal evts e₁ e₂)
 
-@[simp] def isWriteSameLoc (l : Location) (e : Event) :=
+@[simp] def isWriteSameLoc (l : Location) (e : Event tagType) :=
   e.effect.op = Op.write ∧ e.effect.location = l
 
-def po (evts : Events) (e₁ e₂ : Event) : Prop :=
+def po (evts : Events tagType) (e₁ e₂ : Event tagType) : Prop :=
   internal evts e₁ e₂ ∧ e₁.id < e₂.id
 
-instance (evts : Events) : IsStrictOrder Event (rf evts) where
+instance (evts : Events tagType) : IsStrictOrder (Event tagType) (rf evts) where
   irrefl :=
   by
     intro e hin
@@ -100,7 +103,8 @@ instance (evts : Events) : IsStrictOrder Event (rf evts) where
 
     exact ⟨lIn, rIn, lWrite, rRead, sameTarget⟩
 
-theorem rfIsTransitive {evts : Events} : Transitive (rf evts) :=
+omit [DecidableEq tagType] [Inhabited tagType] in
+theorem rfIsTransitive {evts : Events tagType} : Transitive (rf evts) :=
   by
     intro a b c rab rbc
     obtain ⟨lInab, rInab, lWriteab, rReadab, sameTargetab⟩ := rab
@@ -111,12 +115,12 @@ theorem rfIsTransitive {evts : Events} : Transitive (rf evts) :=
 -- This defines:
 -- Write event must exists
 -- Write equlity (If the two write events write to the same read event, then these two writes are the same)
-structure rf.wellformed (evts : Events) (e₁ e₂ : Event) extends rf evts e₁ e₂ where
+structure rf.wellformed (evts : Events tagType) (e₁ e₂ : Event tagType) extends rf evts e₁ e₂ where
   wExtAndUnique {r} : r.effect.op = Op.read ->
     (∃w, isWrite w ∧ rf evts w r)
     ∧ (∀ w₁ w₂, rf evts w₁ r -> rf evts w₂ r -> w₁ = w₂)
 
-structure preCo (evts : Events) (e₁ e₂ : Event) : Prop where
+structure preCo (evts : Events tagType) (e₁ e₂ : Event tagType) : Prop where
   lIn : e₁ ∈ evts
   rIn : e₂ ∈ evts
   lWrite : isWrite e₁
@@ -124,23 +128,23 @@ structure preCo (evts : Events) (e₁ e₂ : Event) : Prop where
 
 -- TODO: Check if this definition follows the Coq definition in diy7.
 structure co.wellformed
-  (evts : Events)
-  [IsStrictTotalOrder Event (preCo evts)]
-  (e₁ e₂ : Event)
+  (evts : Events tagType)
+  [IsStrictTotalOrder (Event tagType) (preCo evts)]
+  (e₁ e₂ : Event tagType)
   extends preCo evts e₁ e₂
 
 @[simp] def fr
-  (evts : Events)
-  [IsStrictTotalOrder Event (preCo evts)]
-  (e1 e2 : Event)
+  (evts : Events tagType)
+  [IsStrictTotalOrder (Event tagType) (preCo evts)]
+  (e1 e2 : Event tagType)
   : Prop :=
   ∃w, isWrite w ∧ rf evts w e1 ∧ co.wellformed evts w e2
 
 
 def com
-  (evts : Events)
-  [IsStrictTotalOrder Event (preCo evts)]
-  (e₁ e₂ : Event) :=
+  (evts : Events tagType)
+  [IsStrictTotalOrder (Event tagType) (preCo evts)]
+  (e₁ e₂ : Event tagType) :=
   rf.wellformed evts e₁ e₂ ∨ co.wellformed evts e₁ e₂ ∨ fr evts e₁ e₂
 
 #check Rel.prod
